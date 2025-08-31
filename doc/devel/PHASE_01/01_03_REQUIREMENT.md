@@ -85,7 +85,7 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
 - 優先度: 必須
 - 説明: 認証後のセッション維持と管理
 - 詳細:
-  - 30日間有効なセッション生成
+  - 3日間有効なセッション生成
   - httpOnly Cookieでのセッション保存
   - セッション検証ミドルウェア
   - ログアウト機能
@@ -208,6 +208,41 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - 楽観的ロックによる同時更新制御
   - データバリデーション
 
+###### emailバリデーション
+```typescript
+/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+```
+
+<input type="email">のバリデーションと一致させる。
+https://developer.mozilla.org/ja/docs/Web/HTML/Reference/Elements/input/email#%E6%A4%9C%E8%A8%BC
+
+###### user_idのバリデーション
+
+UUIDv4に準拠。
+
+###### session_id, auth_token, stream_id
+
+UUIDv7に準拠。
+
+###### stateバリデーション
+
+stateは以下のnumberを想定。
+
+```
+0: 未公開・未確定
+1: 未公開・確定
+2: 公開
+3: 終了
+```
+
+###### tagバリデーション
+
+50文字の文字列を想定。
+
+###### その他
+
+typescriptの型に準拠。
+
 #### 3.2.3 性能
 
 ##### NFR-5: 応答時間
@@ -236,12 +271,14 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - XSS対策（React自動エスケープ）
   - CSP設定（self）
   - セキュアなトークン生成
+    - crypto.randomUUID()を利用
 
 ##### NFR-8: データ保護
 - 優先度: 必須
 - 説明: ユーザーデータの適切な保護
 - 詳細:
   - SQLインジェクション対策（プリペアドステートメント、サニタイズ）
+    - サニタイズの具体的な手法は未定
   - 個人情報の最小限収集
   - ログへの機密情報非出力
   - 全ての入力文字に適切な文字数上限を設定（フロントエンド/バックエンド）
@@ -263,7 +300,7 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 ```
 
-user_idはGUIDを想定。そのまま各人のURLにパスとして含まれる。
+user_idはUUIDv4を想定。そのまま各人のURLにパスとして含まれる。
 
 #### streams テーブル
 ```sql
@@ -276,7 +313,8 @@ CREATE TABLE streams (
   stream_type TEXT NOT NULL,
   description TEXT,
   thumbnail_url TEXT,
-  state INTEGER NOT NULL DEFAULT 1,
+  tags JSON,
+  state INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   deleted_at INTEGER
@@ -284,8 +322,7 @@ CREATE TABLE streams (
 CREATE INDEX idx_streams_user_id ON streams(user_id);
 CREATE INDEX idx_streams_scheduled_at ON streams(scheduled_at);
 ```
-
-stream_idはGUIDを想定
+stream_idはUUIDv7を想定
 
 ### 4.2 KVストレージ構造
 
@@ -327,6 +364,36 @@ interface RateLimit {
   reset_at: number;
 }
 ```
+
+### 4.3 typescript型宣言
+
+```typescript
+interface Stream {
+  info: PublicStream;
+  state: number;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date;
+}
+
+interface PublicStream {
+  stream_id: string;
+  user_id: string;
+  title: string;
+  scheduled_at: Date;
+  platform: 'youtube' | 'twitch' | 'niconico';
+  stream_ype: 'chat' | 'game' | 'singing' | 'collab';
+  description: string;
+  thumbnail_url: Url;
+  tag: string[];
+}
+```
+
+#### TTL
+
+- 認証トークン: TTL 15分
+- セッション: TTL 3日
+- レート制限: TTL 1時間〜1日（種類による）
 
 ## 5. インターフェース要件
 
@@ -381,11 +448,12 @@ interface RateLimit {
 ##### UI-6: 公開スケジュール
 - 必須要素:
   - 表示単位選択（リスト・週）
-  - 1週間のタイムテーブル
+  - 1週間のタイムテーブル(日曜開始)
   - スケジュールカード
     - 日付/時刻表示
     - プラットフォームアイコン
     - シェアボタン（SNS）
+- OGPは今回は作成しない
 
 ### 5.2 APIインターフェース
 
@@ -415,7 +483,6 @@ status:
   1: rate limit over (too meny login request)
   2: expireed. (auth_token)
   3: auth_token/session_id does not match
-  4: user email does not match
 ```
 
 ##### API-3: ログアウト
@@ -452,6 +519,8 @@ status:
 GET /api/streams?page=1&limit=20
 Response: { status: number, message?: string, streams: Stream[], last_page: number }
 
+pageは1オリジン。今の日時の30分前からはじめて、未来に向かってリストアップする。配信中も含む。過去のスケジュールはこの項目では表示できない。
+
 status:
   -1: internal error(messageに詳細を記載)
   0: success (read schedule successfuly)
@@ -460,6 +529,23 @@ status:
   3: auth_token/session_id does not match
   4: malformed parameters (there are no required fields or too meny fields)
   6: out_of_range(page and limit is too big)
+```
+
+```
+GET /api/streams?year=2025&week=1
+Response: { status: number, message?: string, streams: Stream[] }
+
+weekは今年の何週目かを与える。1オリジン。日曜始まり。
+1か月のデータはweekを4~5回呼んで取得
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (read schedule successfuly)
+  1: rate limit over (too meny API request)
+  2: expireed (session_id)
+  3: auth_token/session_id does not match
+  4: malformed parameters (there are no required fields or too meny fields)
+  6: out_of_range(year and week is out of range)
 ```
 
 ```
@@ -505,6 +591,36 @@ status:
   3: auth_token/session_id does not match
   4: malformed parameters (there are no required fields or too meny fields)
   5: id does not found(stream_id)
+```
+
+##### API-8: 公開スケジュール取得
+```
+GET /api/public/streams?page=1&limit=20
+Response: { status: number, message?: string, streams: PublicStream[], last_page: number }
+
+pageは1オリジン。今の日時の30分前からはじめて、未来に向かってリストアップする。配信中も含む。過去のスケジュールはこの項目では表示できない。
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (read schedule successfuly)
+  1: rate limit over (too meny API request)
+  4: malformed parameters (there are no required fields or too meny fields)
+  6: out_of_range(page and limit is too big)
+```
+
+```
+GET /api/public/streams?year=2025&week=1
+Response: { status: number, message?: string, streams: PublicStream[] }
+
+weekは今年の何週目かを与える。1オリジン。日曜始まり。
+1か月のデータはweekを4~5回呼んで取得
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (read schedule successfuly)
+  1: rate limit over (too meny API request)
+  4: malformed parameters (there are no required fields or too meny fields)
+  6: out_of_range(year and week is out of range)
 ```
 
 ## 6. 実装優先順位
