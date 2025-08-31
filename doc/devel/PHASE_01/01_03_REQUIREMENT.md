@@ -50,7 +50,7 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
 - バックエンド: Cloudflare Workers (JavaScript/TypeScript)
 - フロントエンド: React + TypeScript
 - データベース: Cloudflare D1 (SQLite)
-- セッション管理: Cloudflare KV
+- Key-Valueストレージ: Cloudflare KV（セッション管理）
 - ブラウザ要件: Android/Windows Chrome (Baseline前提)
 
 ### 2.5 設計と実装の制約
@@ -79,7 +79,7 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - 認証リンクの生成（有効期限15分）
   - メール送信（外部API経由）
   - ワンクリック認証完了
-  - エラーハンドリング（無効なメール、期限切れ等）
+  - エラーハンドリング（無効なメール(認証トークンが存在しない)、期限切れ等）
 
 ##### FR-2: セッション管理
 - 優先度: 必須
@@ -91,8 +91,16 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - ログアウト機能
   - セッション自動延長
 
-##### FR-3: レート制限
-- 優先度: 必須
+##### FR-3: KVストア整理
+- 優先度: 低
+- 説明: KVストアにもう使用されないデータが残ることを回避する
+- 詳細:
+  - 毎日1回KVストアを整理する
+    - 期限切れ認証トークンのKVストアからの削除
+    - 期限切れセッションIDのKVストアからの削除
+
+##### FR-4: レート制限
+- 優先度: 低
 - 説明: 認証リクエストの制限による悪用防止
 - 詳細:
   - IPアドレスごとに10回/時の制限
@@ -101,18 +109,19 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
 
 #### 3.1.2 配信スケジュール管理
 
-##### FR-4: スケジュール作成
+##### FR-5: スケジュール作成
 - 優先度: 必須
 - 説明: 新規配信予定の作成機能
 - 詳細:
   - タイトル入力（必須、最大100文字）
+  - タグ入力(必須)
   - 日時選択（必須、現在時刻以降）
   - 配信プラットフォーム選択（YouTube/Twitch/ニコニコ）
   - 配信タイプ選択（雑談/ゲーム/歌枠/コラボ）
   - 説明文入力（任意、最大500文字）
   - 公開/非公開の設定
 
-##### FR-5: スケジュール一覧表示
+##### FR-6: スケジュール一覧表示
 - 優先度: 必須
 - 説明: 登録済みスケジュールの一覧表示
 - 詳細:
@@ -122,7 +131,7 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - 配信タイプ別の色分け
   - 公開/非公開の視覚的区別
 
-##### FR-6: スケジュール編集
+##### FR-7: スケジュール編集
 - 優先度: 必須
 - 説明: 既存スケジュールの編集機能
 - 詳細:
@@ -130,7 +139,7 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - 変更履歴の保持（最終更新日時）
   - 編集中の自動保存（下書き機能）
 
-##### FR-7: スケジュール削除
+##### FR-8: スケジュール削除
 - 優先度: 必須
 - 説明: スケジュールの削除機能
 - 詳細:
@@ -140,21 +149,21 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
 
 #### 3.1.3 公開ページ
 
-##### FR-8: 公開スケジュール表示
+##### FR-9: 公開スケジュール表示
 - 優先度: 必須
 - 説明: リスナー向けの配信予定公開ページ
 - 詳細:
   - 認証不要でアクセス可能
   - 公開設定のスケジュールのみ表示
-  - 今後1ヶ月分の予定表示
+  - 今日を含む1週間分の予定表示（日曜開始）
   - モバイルレスポンシブ対応
   - OGP対応（SNSシェア用）
 
-##### FR-9: カレンダービュー（簡易版）
-- 優先度: 高
+##### FR-10: カレンダービュー（簡易版）
+- 優先度: 低
 - 説明: 週間カレンダー形式での表示
 - 詳細:
-  - 本日を含む週のカレンダー表示
+  - 当週のカレンダー表示（日曜開始）
   - 配信予定日にマーカー表示
   - 日付クリックで詳細表示
   - 前週/翌週への移動
@@ -164,7 +173,7 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
 #### 3.2.1 使用性
 
 ##### NFR-1: ユーザビリティ
-- 優先度: 必須
+- 優先度: 低
 - 説明: 直感的で使いやすいインターフェース
 - 詳細:
   - 3クリック以内で主要機能にアクセス
@@ -174,10 +183,10 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - 成功/失敗のフィードバック
 
 ##### NFR-2: レスポンシブデザイン
-- 優先度: 必須
+- 優先度: 中
 - 説明: 各種デバイスでの最適表示
 - 詳細:
-  - モバイル（～767px）対応
+  - モバイル（〜767px）対応
   - デスクトップ（768px〜）対応
   - タッチ操作の最適化
 
@@ -210,10 +219,10 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - インタラクティブまでの時間: 3秒以内
 
 ##### NFR-6: 同時接続
-- 優先度: 中
+- 優先度: 低
 - 説明: 複数ユーザーの同時利用
 - 詳細:
-  - 100同時接続の処理
+  - 2同時接続の処理(別人Vtuber)
   - リソース効率的な実装
 
 #### 3.2.4 セキュリティ
@@ -225,15 +234,17 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - HTTPS通信必須
   - CSRF対策（SameSite Cookie）
   - XSS対策（React自動エスケープ）
+  - CSP設定（self）
   - セキュアなトークン生成
 
 ##### NFR-8: データ保護
 - 優先度: 必須
 - 説明: ユーザーデータの適切な保護
 - 詳細:
-  - SQLインジェクション対策（プリペアドステートメント）
+  - SQLインジェクション対策（プリペアドステートメント、サニタイズ）
   - 個人情報の最小限収集
   - ログへの機密情報非出力
+  - 全ての入力文字に適切な文字数上限を設定（フロントエンド/バックエンド）
 
 ## 4. データモデル
 
@@ -242,7 +253,7 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
 #### users テーブル
 ```sql
 CREATE TABLE users (
-  id TEXT PRIMARY KEY,
+  user_id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   name TEXT,
   created_at INTEGER NOT NULL,
@@ -252,22 +263,12 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 ```
 
-#### auth_tokens テーブル
-```sql
-CREATE TABLE auth_tokens (
-  token TEXT PRIMARY KEY,
-  user_email TEXT NOT NULL,
-  expires_at INTEGER NOT NULL,
-  used_at INTEGER,
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX idx_auth_tokens_email ON auth_tokens(user_email);
-```
+user_idはGUIDを想定。そのまま各人のURLにパスとして含まれる。
 
 #### streams テーブル
 ```sql
 CREATE TABLE streams (
-  id TEXT PRIMARY KEY,
+  stream_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   title TEXT NOT NULL,
   scheduled_at INTEGER NOT NULL,
@@ -275,36 +276,55 @@ CREATE TABLE streams (
   stream_type TEXT NOT NULL,
   description TEXT,
   thumbnail_url TEXT,
-  is_public INTEGER NOT NULL DEFAULT 1,
+  state INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  deleted_at INTEGER,
-  FOREIGN KEY (user_id) REFERENCES users(id)
+  deleted_at INTEGER
 );
 CREATE INDEX idx_streams_user_id ON streams(user_id);
 CREATE INDEX idx_streams_scheduled_at ON streams(scheduled_at);
 ```
 
+stream_idはGUIDを想定
+
 ### 4.2 KVストレージ構造
+
+#### 認証トークン
+```typescript
+// key: auth:{auth_token}
+interface AuthToken {
+  user_email: string;
+  created_at: Date;
+  used_at: Date;
+  expires_at: Date;
+};
+```
 
 #### セッション
 ```typescript
-// Key: session:{sessionId}
+// Key: session:{session_id}
 interface SessionData {
-  userId: string;
+  user_id: string;
   email: string;
-  createdAt: number;
-  expiresAt: number;
+  created_at: Date;
+  expires_at: Date;
 }
 ```
 
 #### レート制限
 ```typescript
-// Key: rate:auth:ip:{ipAddress}
+// 認証 10回/時
 // Key: rate:auth:email:{email}
+
+// API 1000回/時
+// Key: rate:api:session:{session_id}
+
+// リクエスト・質問 10回/日
+// Key: rate:post:request:{cookie_id}
+
 interface RateLimit {
   count: number;
-  resetAt: number;
+  reset_at: number;
 }
 ```
 
@@ -323,8 +343,11 @@ interface RateLimit {
 
 ##### UI-2: 認証完了画面
 - 必須要素:
-  - 成功メッセージ
-  - ダッシュボードへの遷移ボタン
+  - 自動的にダッシュボードへ遷移
+  - 失敗メッセージ
+    - メールアドレス不一致
+    - 認証ID不一致
+    - 認証ID expire済み
 
 #### 5.1.2 管理画面
 
@@ -337,7 +360,9 @@ interface RateLimit {
 
 ##### UI-4: スケジュール一覧
 - 必須要素:
+  - 表示単位選択（リスト・週）
   - スケジュールカード
+  - 1週間のタイムテーブル
   - 新規作成ボタン
   - ページネーション
   - 検索/フィルター（Phase 2で実装）
@@ -347,16 +372,20 @@ interface RateLimit {
   - 入力フォーム
   - 保存/キャンセルボタン
   - バリデーションエラー表示
+    - タイトル: 100文字(YouTubeの制約より)
+    - description: 2500文字(YouTubeの制約より。海外では5000文字のところもあるようだが、現状2500均一)
   - 削除ボタン（編集時のみ）
 
 #### 5.1.3 公開ページ
 
 ##### UI-6: 公開スケジュール
 - 必須要素:
-  - 配信予定リスト
-  - 日付/時刻表示
-  - プラットフォームアイコン
-  - シェアボタン（SNS）
+  - 表示単位選択（リスト・週）
+  - 1週間のタイムテーブル
+  - スケジュールカード
+    - 日付/時刻表示
+    - プラットフォームアイコン
+    - シェアボタン（SNS）
 
 ### 5.2 APIインターフェース
 
@@ -366,20 +395,40 @@ interface RateLimit {
 ```
 POST /api/auth/magic-link
 Request: { email: string }
-Response: { message: string }
+Response: { status: number, message?: string }
+
+status:
+  -1: internal error(messageに詳細を記載、emailサーバーが正しく応答しない、もこれ)
+  0: success (email sent)
+  1: rate limit over (too meny login request)
 ```
 
 ##### API-2: 認証確認
 ```
 POST /api/auth/verify
-Request: { token: string }
-Response: { sessionId: string }
+Request: { auth_token: string }
+Response: { status: number, message?: string, session_id: string }
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (auth successfuly)
+  1: rate limit over (too meny login request)
+  2: expireed. (auth_token)
+  3: auth_token/session_id does not match
+  4: user email does not match
 ```
 
 ##### API-3: ログアウト
 ```
 POST /api/auth/logout
-Response: { success: boolean }
+Response: { status: number, message?: string }
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (logout successfuly)
+  1: rate limit over (too meny API request)
+  2: expireed (session_id)
+  3: auth_token/session_id does not match
 ```
 
 #### 5.2.2 スケジュールAPI
@@ -387,52 +436,97 @@ Response: { success: boolean }
 ##### API-4: スケジュール作成
 ```
 POST /api/streams
-Request: Stream object
-Response: Created stream
+Request: Stream object(without stream_id)
+Response: { status: number, message?: string, stream: Stream }
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (create schedule successfuly)
+  1: rate limit over (too meny API request)
+  2: expireed (session_id)
+  3: auth_token/session_id does not match
 ```
 
 ##### API-5: スケジュール取得
 ```
 GET /api/streams?page=1&limit=20
-Response: { streams: Stream[], total: number }
+Response: { status: number, message?: string, streams: Stream[], last_page: number }
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (read schedule successfuly)
+  1: rate limit over (too meny API request)
+  2: expireed (session_id)
+  3: auth_token/session_id does not match
+  4: malformed parameters (there are no required fields or too meny fields)
+  6: out_of_range(page and limit is too big)
+```
+
+```
+GET /api/streams/:id
+Response: { status: number, message?: string, streams: Stream[], last_page: number }
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (read schedule successfuly)
+  1: rate limit over (too meny API request)
+  2: expireed (session_id)
+  3: auth_token/session_id does not match
+  4: malformed parameters (there are no required fields or too meny fields)
+  5: id does not found(stream_id)
 ```
 
 ##### API-6: スケジュール更新
 ```
 PUT /api/streams/:id
 Request: Stream object
-Response: Updated stream
+Response: { status: number, message?: string }
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (update schedule successfuly)
+  1: rate limit over (too meny API request)
+  2: expireed (session_id)
+  3: auth_token/session_id does not match
+  4: malformed parameters (there are no required fields or too meny fields)
+  5: id does not found(stream_id)
 ```
 
 ##### API-7: スケジュール削除
 ```
 DELETE /api/streams/:id
-Response: { success: boolean }
+Response: { status: number, message?: string }
+
+status:
+  -1: internal error(messageに詳細を記載)
+  0: success (delete schedule successfuly)
+  1: rate limit over (too meny API request)
+  2: expireed (session_id)
+  3: auth_token/session_id does not match
+  4: malformed parameters (there are no required fields or too meny fields)
+  5: id does not found(stream_id)
 ```
 
-##### API-8: 公開スケジュール取得
-```
-GET /api/public/streams
-Response: { streams: PublicStream[] }
-```
+## 6. 実装優先順位
 
-## 6. 実装順位
-
-1. 機能仕様作成
+### 6.1 必須機能
+1. 環境構築（Cloudflare、開発環境）
 2. D1スキーマ作成
-3. 環境構築（Cloudflare、開発環境）
-4. Magic Link認証基本実装
-5. セッション管理
-6. スケジュールCRUD API
-7. 管理画面基本UI
-8. 公開ページ
-9. レスポンシブ対応
+3. Magic Link認証基本実装
+4. セッション管理
+
+### 6.2 コア機能
+1. スケジュールCRUD API
+2. 管理画面基本UI
+3. 公開ページ
+4. レスポンシブ対応
 
 ## 7. 受け入れ基準
 
 ### 7.1 機能テスト
 - [ ] Magic Link認証が正常に動作する
-- [ ] セッションが30日間維持される
+- [ ] セッションが3日間維持される
+- [ ] アクセスすると、その時点から3日間セッションが維持される
 - [ ] スケジュールの作成・編集・削除ができる
 - [ ] 公開ページで配信予定が確認できる
 - [ ] モバイル端末で正常に表示される
@@ -440,12 +534,11 @@ Response: { streams: PublicStream[] }
 ### 7.2 非機能テスト
 - [ ] ページロード2秒以内
 - [ ] API応答200ms以内
-- [ ] 100同時接続で正常動作
+- [ ] 2同時接続で正常動作
 - [ ] XSS/CSRF攻撃への耐性
 
 ### 7.3 ドキュメント
 - [ ] APIドキュメント作成
-- [ ] セットアップガイド作成
 - [ ] 基本的な使い方ガイド作成
 
 ## 8. リスクと対策
@@ -454,7 +547,7 @@ Response: { streams: PublicStream[] }
 
 | リスク | 影響度 | 発生確率 | 対策 |
 |-------|--------|----------|------|
-| メール送信API障害 | 高 | 低 | 複数プロバイダー対応準備 |
+| メール送信API障害 | 高 | 低 | 対応しない |
 | D1パフォーマンス問題 | 中 | 中 | インデックス最適化、KVキャッシュ |
 | セッション管理の複雑さ | 中 | 中 | 既存ライブラリの活用検討 |
 
@@ -469,4 +562,3 @@ Response: { streams: PublicStream[] }
 - 直感的なUIで説明書不要
 - スムーズな認証フロー
 - 安定した動作
-
