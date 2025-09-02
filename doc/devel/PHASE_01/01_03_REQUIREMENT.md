@@ -573,6 +573,7 @@ Response: { status: number, message?: string, streams: Stream[] }
 weekは今年の何週目かを与える。1オリジン。日曜始まり、1月1日を含む週が第1週
 注：ISO 8601とは異なる独自仕様
 1か月のデータはweekを4~5回呼んで取得
+1か月の定義は、当日を含む月で、週の途中で月が替わる場合は、前月の最後の週/後月の最初の週を含む、4~5週と定める。
 
 status:
   -1: internal error(messageに詳細を記載)
@@ -586,7 +587,7 @@ status:
 
 ```
 GET /api/streams/:id
-Response: { status: number, message?: string, streams: Stream }
+Response: { status: number, message?: string, stream: Stream }
 
 status:
   -1: internal error(messageに詳細を記載)
