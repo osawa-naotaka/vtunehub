@@ -81,7 +81,7 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - ワンクリック認証完了
   - エラーハンドリング（無効なメール(認証トークンが存在しない)、期限切れ等）
 
-##### FR-2: セッション管理
+##### FR-2: Vtuberのセッション管理
 - 優先度: 必須
 - 説明: 認証後のセッション維持と管理
 - 詳細:
@@ -115,7 +115,7 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
 - 詳細:
   - タイトル入力（必須、最大100文字）
   - タグ入力(必須)
-  - 日時選択（必須、現在時刻以降）
+  - 日時選択（必須、現在時刻以降、現在日から3か月先未満）
   - 配信プラットフォーム選択（YouTube/Twitch/ニコニコ）
   - 配信タイプ選択（雑談/ゲーム/歌枠/コラボ）
   - 説明文入力（任意、最大500文字）
@@ -147,26 +147,39 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - ソフトデリート（論理削除）
   - 削除後30日間は復元可能
 
+##### FR-9: リスナー閲覧用の静的サイト書き出し
+- 優先度: 必須
+- 説明: スケジュールがhtmlファイル内に書き込まれた静的サイトをデプロイ
+- 詳細:
+  - FR-5,7,8において、公開状態のスケジュールが編集・削除されたとき、及び、スケジュールが公開状態に遷移したとき、スケジュールが未公開状態に遷移したときに静的サイトを生成しなおす
+
+##### FR-10: レート制限
+- 優先度: 低
+- 説明: APIの制限による悪用防止
+- 詳細:
+  - session idごとにAPI呼び出し1000回/時の制限
+  - 制限超過時のエラーメッセージ表示
+
 #### 3.1.3 公開ページ
 
-##### FR-9: 公開スケジュール表示
+##### FR-11: 公開スケジュール表示
 - 優先度: 必須
 - 説明: リスナー向けの配信予定公開ページ
 - 詳細:
   - 認証不要でアクセス可能
+    - 完全静的サイトとしてデプロイ
   - 公開設定のスケジュールのみ表示
   - 今日を含む1週間分の予定表示（日曜開始）
   - モバイルレスポンシブ対応
   - OGP対応（SNSシェア用）
 
-##### FR-10: カレンダービュー（簡易版）
+##### FR-13: カレンダービュー（簡易版）
 - 優先度: 低
 - 説明: 週間カレンダー形式での表示
 - 詳細:
   - 当週のカレンダー表示（日曜開始）
   - 配信予定日にマーカー表示
   - 日付クリックで詳細表示
-  - 前週/翌週への移動
 
 ### 3.2 非機能要件
 
@@ -356,9 +369,6 @@ interface SessionData {
 // API 1000回/時
 // Key: rate:api:session:{session_id}
 
-// リクエスト・質問 10回/日
-// Key: rate:post:request:{cookie_id}
-
 interface RateLimit {
   count: number;
   reset_at: number;
@@ -373,7 +383,7 @@ interface Stream {
   state: number;
   created_at: Date;
   updated_at: Date;
-  deleted_at: Date;
+  deleted_at: Date | null;
 }
 
 interface PublicStream {
@@ -382,10 +392,10 @@ interface PublicStream {
   title: string;
   scheduled_at: Date;
   platform: 'youtube' | 'twitch' | 'niconico';
-  stream_ype: 'chat' | 'game' | 'singing' | 'collab';
+  stream_type: 'chat' | 'game' | 'singing' | 'collab';
   description: string;
-  thumbnail_url: Url;
-  tag: string[];
+  thumbnail_url: string;
+  tags: string[];
 }
 ```
 
@@ -475,7 +485,7 @@ status:
 ```
 POST /api/auth/verify
 Request: { auth_token: string }
-Response: { status: number, message?: string, session_id: string }
+Response: { status: number, message?: string }
 
 status:
   -1: internal error(messageに詳細を記載)
@@ -484,6 +494,8 @@ status:
   2: expireed. (auth_token)
   3: auth_token/session_id does not match
 ```
+
+session idはクッキーとしてサーバーからクライアントに送信されます。
 
 ##### API-3: ログアウト
 ```
@@ -550,7 +562,7 @@ status:
 
 ```
 GET /api/streams/:id
-Response: { status: number, message?: string, streams: Stream[], last_page: number }
+Response: { status: number, message?: string, streams: Stream }
 
 status:
   -1: internal error(messageに詳細を記載)
@@ -591,36 +603,6 @@ status:
   3: auth_token/session_id does not match
   4: malformed parameters (there are no required fields or too meny fields)
   5: id does not found(stream_id)
-```
-
-##### API-8: 公開スケジュール取得
-```
-GET /api/public/streams?page=1&limit=20
-Response: { status: number, message?: string, streams: PublicStream[], last_page: number }
-
-pageは1オリジン。今の日時の30分前からはじめて、未来に向かってリストアップする。配信中も含む。過去のスケジュールはこの項目では表示できない。
-
-status:
-  -1: internal error(messageに詳細を記載)
-  0: success (read schedule successfuly)
-  1: rate limit over (too meny API request)
-  4: malformed parameters (there are no required fields or too meny fields)
-  6: out_of_range(page and limit is too big)
-```
-
-```
-GET /api/public/streams?year=2025&week=1
-Response: { status: number, message?: string, streams: PublicStream[] }
-
-weekは今年の何週目かを与える。1オリジン。日曜始まり。
-1か月のデータはweekを4~5回呼んで取得
-
-status:
-  -1: internal error(messageに詳細を記載)
-  0: success (read schedule successfuly)
-  1: rate limit over (too meny API request)
-  4: malformed parameters (there are no required fields or too meny fields)
-  6: out_of_range(year and week is out of range)
 ```
 
 ## 6. 実装優先順位
