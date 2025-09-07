@@ -47,8 +47,8 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
 - クライアント: PC、タブレット、スマートフォン
 
 #### 2.4.2 ソフトウェア環境
-- バックエンド: Cloudflare Workers (JavaScript/TypeScript)
-- フロントエンド: React + TypeScript
+- バックエンド: Cloudflare Workers + Hono (API, JavaScript/TypeScript)
+- フロントエンド: React + React Router + TypeScript (SPA)
 - データベース: Cloudflare D1 (SQLite)
 - Key-Valueストレージ: Cloudflare KV（セッション管理）
 - ブラウザ要件: Android/Windows Chrome (Baseline前提)
@@ -88,10 +88,10 @@ VTuneHub Phase 1は、VTuberが配信スケジュールを簡単に管理し、�
   - メールアドレスごとに5回/時の制限
 
 ##### FR-3: KVストア肥大化防止機能
-- 優先度: 低
+- 優先度: 高
 - 説明: KVストアから期限切れの情報を削除できること
 - 詳細:
-  - 定期的な削除を想定
+  - Cloudflare KVのexpirationTtlの利用を想定
 
 #### 3.1.2 配信スケジュール管理システム
 
@@ -209,9 +209,11 @@ stateは以下のnumberを想定。
 3: 終了
 ```
 
-###### tagバリデーション
+###### テキスト長バリデーション
 
-50文字の文字列を想定。
+- tag: 最大50文字の文字列
+- title: 最大100文字の文字列
+- description: 最大500文字の文字列
 
 ###### platform/stream_typeバリデーション
 const VALID_PLATFORMS = ['youtube', 'twitch', 'niconico'] as const;
