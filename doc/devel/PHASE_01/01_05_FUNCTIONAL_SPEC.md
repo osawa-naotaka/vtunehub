@@ -2,197 +2,113 @@
 
 ## 1. 概要
 
-本ドキュメントでは、VTuneHub Phase 1（MVP）システムの各機能について技術的な詳細仕様を定義します。要求仕様書で定義された要件を基に、各機能が提供すべき価値と振る舞いを記述します。
+本ドキュメントでは、VTuneHub Phase 1（MVP）システムの各機能について技術的な詳細仕様を定義します。要求仕様書で定義された要件を基に、各機能が提供すべき振る舞いを記述します。
 
-## 2. システム概要図
+VTuneHub Phase 1 (MVP)は、VTuberが自身のスケジュールを管理し、それをリスナーに公開することを主要機能とします。VTuberはemailベースのMagic Linkを用いた認証により認可を受け、スケジュールを管理します。スケジュールは静的サイト経由でユーザーに公開されます。VTuberが公開スケジュールを作成修正するたびに、静的サイトをCloudflare Pagesにデプロイし、スケジュールをユーザーに公開します。
 
-### 2.1 認証システム
+VtuneHubは、Cloudflareの各サービスを用いたSPAとして実装されます。SPAはReact Routerを用いて実装され、APIはCloudflare Workers + Honoで実現されます。トークンやセッションID類はKVに格納され、スケジュールはD1に格納されます。
+
+VtuneHubは認証システム・配信スケジュール管理システム・静的サイト生成システムの3種類のシステムからなります。このうち、SPAで画面が存在するのは認証システムと配信スケジュール管理システムです。これらのシステムは、ブラウザ上に画面をレンダリングし、ユーザーの操作に従いWorkers + Honoによって提供されるAPI越しに操作を行い、改めて編集取得されたデータを画面にレンダリングします。静的サイト生成システムは、静的サイト生成用のAPIをユーザー操作の裏で呼び出すことで、Workers上でのみ動作します。
+
+
+
+## 2. アーキテクチャ
+
+### 2.1 システムブロック図概要
 ```mermaid
 graph TB
+
+  %% Actor and External Services
   ACTOR_VTUBER(("VTuber"))
+  ACTOR_USER(("リスナー"))
   SV_EMAIL[("Email Service<BR>Resend")]
   SV_KV[("Cloudflare KV")]
   SV_D1[("Cloudflare D1")]
+  SV_PAGES[("Cloudflare Pages")]
+  
 
+  %% AUth system
   subgraph SYS_AUTH["認証システム"]
-    subgraph SYS_MAGICLINK["Magic Link認証"]
-      FN_REQUEST_LINK["認証リンク要求"]
-      FN_GENERATE_TOKEN["トークン生成"]
-      FN_SEND_EMAIL["メール送信"]
-      FN_VERIFY_TOKEN["トークン検証"]
-    end
-
-    subgraph SYS_SESSION["セッション管理"]
-      FN_CREATE_SESSION["セッション作成"]
-      FN_VERIFY_SESSION["セッション検証"]
-      FN_EXTEND_SESSION["セッション延長"]
-      FN_DELETE_SESSION["セッション削除"]
-    end
-
-    FN_RATE_LIMIT["レート制限"]
+    FN_AUTH["Magic Link認証機能"]
+    FN_SESSION["セッション管理機能"]
   end
 
-  %% アクター
-  ACTOR_VTUBER --"メールアドレス入力"--> FN_REQUEST_LINK
-  ACTOR_VTUBER --"認証リンククリック"--> FN_VERIFY_TOKEN
+  %% Auth flow
+  ACTOR_VTUBER --"1.各種操作"--> FN_SESSION
+    FN_SESSION --"2.認証要求"--> FN_AUTH
+  FN_AUTH --"3.ログイン要求"--> ACTOR_VTUBER
+  ACTOR_VTUBER --"4.ログイン試行"--> FN_AUTH
+  FN_AUTH --"5.Magic Link"--> SV_EMAIL
+  SV_EMAIL --"6.Magic Link"--> ACTOR_VTUBER
+  ACTOR_VTUBER --"7.Magic Linkアクセス"--> FN_AUTH
+    FN_AUTH --"8.認証"--> FN_SESSION
+  FN_SESSION --"9.操作認可"--> SYS_SCHED
 
-  %% Magic Link認証
-  FN_REQUEST_LINK --> FN_RATE_LIMIT
-  FN_RATE_LIMIT --> FN_GENERATE_TOKEN
-  FN_GENERATE_TOKEN --"トークン保存"--> SV_KV
-  FN_GENERATE_TOKEN --> FN_SEND_EMAIL
-  FN_SEND_EMAIL --"認証メール"--> SV_EMAIL
-  SV_EMAIL --"メール送信"--> ACTOR_VTUBER
+  %% Token and ID Storage
+  FN_SESSION <--"セッションID"--> SV_KV
+  FN_AUTH <--"認証トークン"--> SV_KV
 
-  FN_VERIFY_TOKEN --"トークン照合"--> SV_KV
-  FN_VERIFY_TOKEN --> FN_CREATE_SESSION
-  
-  %% セッション管理
-  FN_CREATE_SESSION --"セッションID保存"--> SV_KV
-  FN_CREATE_SESSION --"ユーザー情報保存"--> SV_D1
-  FN_VERIFY_SESSION --"セッション照合"--> SV_KV
-  FN_EXTEND_SESSION --"有効期限更新"--> SV_KV
-  FN_DELETE_SESSION --"セッション削除"--> SV_KV
+
+
+  %% Static Site Generation
+  subgraph SYS_DEPLOY["静的サイト生成システム"]
+    FN_DEPLOY["静的サイト生成"]
+  end
+
+  FN_SCHED_MANIPULATE --"生成トリガ"--> FN_DEPLOY
+
+  %% Access to Static Site
+  ACTOR_USER <--"スケジュール閲覧"--> SV_PAGES
+
+
+
+  %% Schedule Managament System
+  subgraph SYS_SCHED["配信スケジュール管理システム"]
+    subgraph FN_SCHED_MANIPULATE["スケジュール操作"]
+      FN_CREATE["スケジュール作成"]
+      FN_EDIT["スケジュール編集・削除"]
+    end
+    FN_LIST["スケジュールリスト表示"]
+    FN_VALID["各種値の検証"]
+
+    FN_SCHED_MANIPULATE <--"検証"--> FN_VALID
+  end
+
+  %% Schedule Storage
+  SYS_SCHED <--> SV_D1
+
+  %% Static Site Deploy
+  SV_D1 --"スケジュール取得"--> FN_DEPLOY 
+  FN_DEPLOY --"デプロイ"--> SV_PAGES
+
+  %% Response to Actor
+  SYS_SCHED --> ACTOR_VTUBER
+
+
 ```
 
-### 2.2 配信スケジュール管理システム
+## 2.2 画面遷移図概要
+
+### 2.2.1 VTuneHub (VTuber用画面)
 ```mermaid
-graph TB
-  ACTOR_VTUBER(("VTuber"))
-  ACTOR_LISTENER(("リスナー"))
-  
-  subgraph SYS_SCHEDULE["配信スケジュール管理"]
-    subgraph SYS_CRUD["CRUD機能"]
-      FN_CREATE["スケジュール作成"]
-      FN_READ["スケジュール取得"]
-      FN_UPDATE["スケジュール更新"]
-      FN_DELETE["スケジュール削除"]
-    end
-    
-    subgraph SYS_STATIC["静的サイト生成"]
-      FN_TRIGGER["生成トリガー"]
-      FN_FETCH_DATA["データ取得"]
-      FN_GENERATE_HTML["HTML生成"]
-      FN_DEPLOY["デプロイ"]
-    end
-  end
+graph LR
+  ログイン-->MagicLink送信
+  MagicLinkに移動-->ダッシュボード
 
-  SV_D1[("Cloudflare D1")]
-  SV_PAGES[("Cloudflare Pages")]
+  
+  ダッシュボード
+  ダッシュボード<-->スケジュールリスト 
+  ダッシュボード<-->スケジュール編集
+  スケジュールリスト<-->スケジュール編集
+```
 
-  ACTOR_VTUBER --> FN_CREATE
-  ACTOR_VTUBER --> FN_UPDATE
-  ACTOR_VTUBER --> FN_DELETE
-  
-  FN_CREATE --"データ保存"--> SV_D1
-  FN_UPDATE --"データ更新"--> SV_D1
-  FN_DELETE --"論理削除"--> SV_D1
-  FN_READ --"データ取得"--> SV_D1
-  
-  FN_CREATE --> FN_TRIGGER
-  FN_UPDATE --> FN_TRIGGER
-  FN_DELETE --> FN_TRIGGER
-  
-  FN_TRIGGER --> FN_FETCH_DATA
-  FN_FETCH_DATA --"公開データ取得"--> SV_D1
-  FN_FETCH_DATA --> FN_GENERATE_HTML
-  FN_GENERATE_HTML --> FN_DEPLOY
-  FN_DEPLOY --"静的HTML"--> SV_PAGES
-  
-  ACTOR_LISTENER --"Webアクセス"--> SV_PAGES
+### 2.2.2 リスナー用画面
+```mermaid
+graph LR
+  スケジュールリスト
 ```
 
 ## 3. 機能詳細仕様
-
-
-#### 3.1 認証システム
-
-
-
-#### 3.2 配信スケジュール管理
-
-##### F005: スケジュール作成
-- 優先度: 必須
-- 説明: 新規配信予定の作成機能
-- 詳細:
-  - タイトル入力（必須、最大100文字）
-  - タグ入力(必須)
-  - 日時選択（必須、現在時刻以降、現在日から3か月先未満）
-  - 配信プラットフォーム選択（YouTube/Twitch/ニコニコ）
-  - 配信タイプ選択（雑談/ゲーム/歌枠/コラボ）
-  - 説明文入力（任意、最大500文字）
-  - 公開/非公開の設定
-
-##### F006: スケジュール一覧表示
-- 優先度: 必須
-- 説明: 登録済みスケジュールの一覧表示
-- 詳細:
-  - カード形式での表示
-  - 時系列順（直近が上）
-  - ページネーション（20件/ページ）
-  - 配信タイプ別の色分け
-  - 公開/非公開の視覚的区別
-
-##### F007: スケジュール編集
-- 優先度: 必須
-- 説明: 既存スケジュールの編集機能
-- 詳細:
-  - 全項目の編集可能
-  - 変更履歴の保持（最終更新日時）
-  - 編集中の自動保存（下書き機能）
-
-##### F008: スケジュール削除
-- 優先度: 必須
-- 説明: スケジュールの削除機能
-- 詳細:
-  - 削除確認ダイアログ
-  - ソフトデリート（論理削除）
-  - 削除後30日間は復元可能
-
-##### F009: リスナー閲覧用の静的サイト書き出し
-- 優先度: 必須
-- 説明: スケジュールがhtmlファイル内に書き込まれた静的サイトをデプロイ
-- 詳細:
-  - 生成内容
-    - /public/{user_id}/index.html
-    - 必要なCSS/JSファイル
-  - 生成トリガー条件：
-    - スケジュール新規作成（state: 2）
-    - state変更（0,1 → 2、2 → 0,1,3）
-    - 公開スケジュールの内容編集
-    - 公開スケジュールの削除（論理削除）
-  - 複数の更新が同時に発生した場合、最後の更新のみ反映させる
-  - cloudflareのcache設定
-  　　- Cache-Control: public, max-age=300  # 5分
-  - 静的サイト生成失敗時、管理画面に通知(internal error)
-    - リトライなし、古いバージョンを保持
-
-
-#### 3.3 公開ページ
-
-##### F011: 公開スケジュール表示
-- 優先度: 必須
-- 説明: リスナー向けの配信予定公開ページ
-- 詳細:
-  - 認証不要でアクセス可能
-    - 完全静的サイトとしてデプロイ
-  - 公開設定のスケジュールのみ表示
-  - 今日を含む1週間分の予定表示（日曜開始）
-    - 週番号定義：日曜始まり、1月1日を含む週が第1週
-    - 注：ISO 8601とは異なる独自仕様
-  - モバイルレスポンシブ対応
-  - OGP対応（SNSシェア用）
-
-##### F012: カレンダービュー（簡易版）
-- 優先度: 低
-- 説明: 週間カレンダー形式での表示
-- 詳細:
-  - 当週のカレンダー表示（日曜開始）
-  - 配信予定日にマーカー表示
-  - 日付クリックで詳細表示
-
-
-
 
 ### 3.1 認証システム
 
@@ -295,78 +211,186 @@ interface SessionData {
 
 ### 3.2 配信スケジュール管理システム
 
-**機能ID**: F003  
-**対応機能要件**: FR-5, FR-6, FR-7, FR-8  
-**対応ユーザーストーリー**:  
-
-**概要**:
-VTuberが配信予定を管理し、リスナーに公開するための中核機能です。
+VTuberが配信予定を管理し、リスナーに公開するための中核システムです。React Routerを用いたSPAとして実装され、ホスティングはCloudflare Pagesで行います。APIはCloudflare Workers + Honoにより実現します。
 
 #### 3.2.1 データモデル
 
 **Streamデータ構造**:
 ```typescript
 interface Stream {
-  stream_id: string;        // UUIDv7形式の一意識別子
-  user_id: string;          // UUIDv4形式のユーザー識別子
-  title: string;            // 配信タイトル（最大100文字）
-  scheduled_at: Date;       // 配信予定日時
-  platform: 'youtube' | 'twitch' | 'niconico';
-  stream_type: 'chat' | 'game' | 'singing' | 'collab';
-  description?: string;     // 配信説明（最大500文字）
-  thumbnail_url?: string;   // サムネイルURL
-  tags: string[];          // タグ配列（各最大50文字）
-  state: number;           // 0:未公開未確定 1:未公開確定 2:公開 3:終了
+  stream_id: string;  // UUIDv7
+  info: StreamInfo;
+  state: number;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
 }
+
+interface PublicStream {
+  stream_id: string;
+  info: StreamInfo;
+}
+
+interface StreamOnCreate {
+  info: StreamInfo;
+  state: number;
+}
+
+interface StreamInfo {
+  user_id: string;
+  title: string;
+  will_start_at: Date;
+  will_end_at: Date;
+  dulation: number; // minute
+  platform: 'youtube' | 'twitch' | 'niconico';
+  stream_type: 'chat' | 'game' | 'singing' | 'collab';
+  description: string;
+  tags: string[];
+}
 ```
 
-#### 3.2.2 スケジュール管理機能
+#### 3.2.2 Stream state状態遷移
 
-**作成機能**:
-- 配信予定を新規登録する
-- 最大3ヶ月先まで予約可能
-- 公開/非公開の選択が可能
-- タグによる分類をサポート
+- 公開/未公開などの状態の設定
+  - 0: 未公開・未確定
+  - 1: 未公開・確定
+  - 2: 公開
 
-**一覧表示機能**:
-- 今後の配信予定を時系列で表示
-- ページネーション対応（20件/ページ）
-- 週単位での取得も可能（カレンダー表示用）
-- 配信タイプごとに色分け表示
+```mermaid
+graph LR
+  ST_PRIVATE_UNDETERMINED((非公開<BR>未確定))
+  ST_PRIVATE_DETERMINED((非公開<BR>確定))
+  ST_PUBLIC((公開))
 
-**編集機能**:
-- 登録済みスケジュールの全項目を変更可能
-- 公開状態の切り替えが可能
-- 変更履歴を自動記録
+  ST_PRIVATE_UNDETERMINED --"確定"--> ST_PRIVATE_DETERMINED
+  ST_PRIVATE_UNDETERMINED --"確定・公開"--> ST_PUBLIC
+  ST_PRIVATE_DETERMINED --"差し戻し"--> ST_PRIVATE_UNDETERMINED
+  ST_PRIVATE_DETERMINED --"公開"--> ST_PUBLIC
+  ST_PUBLIC --"差し戻し"--> ST_PRIVATE_UNDETERMINED
+  ST_PUBLIC --"差し戻し"--> ST_PRIVATE_DETERMINED
+```
 
-**削除機能**:
-- 論理削除により30日間は復元可能
-- 物理削除は30日後に自動実行
+#### 3.2.3 ダッシュボード機能
 
-**週単位取得の仕様**:
-- 日曜始まりの週番号で指定
-- 1月1日を含む週が第1週
-- 月間表示では当月を含む4-5週分を取得
+**機能ID**: F003
+**対応機能要件**: FR-5
+**対応ユーザーストーリー**:  
 
-**バリデーションルール**
-- zodによりtypescriptの型からバリデーションを行う
-  - tag: 最大50文字の文字列
-  - title: 最大100文字の文字列
-  - description: 最大500文字の文字列
+**概要**: ログイン直後のメイン画面としてのダッシュボードを表示する。各種ボタンを押すことにより他の画面に遷移する。
 
----
+**提供する機能**:
+- **スケジュール表示**: 直近3個のスケジュールをカードのリスト形式で表示する。
+- **新規スケジュール作成機能への遷移**: 新規作成ボタンを作成し、押下された場合はスケジュール作成画面に遷移する。
+- **スケジュール編集機能への遷移**: カードに存在する編集ボタンを押下された場合は、スケジュール編集・削除画面に遷移する。
+- **スケジュール削除**: カードに存在する削除ボタンを押下された場合は、スケジュールを論理削除しD1に書き込む。論理削除はdeleted_atフィールドに日付を入力することにより実現する。削除前に警告を出す。
+- **ログアウト**: Logoutボタンを押された場合は、セッションをKVストアから削除してログアウトする。ログアウト後はlogin画面に遷移する。
+
+
+#### 3.2.4 スケジュール作成機能
+
+**機能ID**: F004  
+**対応機能要件**: FR-5  
+**対応ユーザーストーリー**:  
+
+**概要**: ユーザーからの入力によりスケジュールを作成する。入力はF007のバリデーション機能により適宜検証される。
+
+**提供する機能**:
+- **スケジュールの新規作成ページ表示**: ユーザーがスケジュールを入力するために使う。StreamOnCreate型に存在する項目をユーザーに入力させる。
+- **D1への書き込み**: Submitボタン押下によりAPIを呼び出し、入力されたスケジュールをD1に書き込む。成功/失敗の通知を出す。
+- **作成キャンセル**: Cancelボタン押下により、入力値を破棄し、1個前の画面へ遷移する
+- **編集中の自動保存**: LocalStorageに編集中の値を保持する。Submit or Cancelボタンで値を破棄する。ボタンを押さずにページ遷移した場合でも、編集中の値を復帰できるようにする。
+- **編集中ステータス**: 必要な情報が全てそろってバリデーションが通った場合のみ、Submitボタンを有効にする。そうでない場合は無効にし、Submitできないようにする。画面上にも必須項目で未入力の箇所がわかるようにする（手法未定）
+
+**バリデーション**
+- フロントエンド・バックエンド共にバリデーションを行う
+
+**エラー処理**
+- API呼び出しに失敗した場合、エラー通知を出して作成画面に留まる
+
+#### 3.2.5 スケジュール一覧表示機能
+
+**機能ID**: F005
+**対応機能要件**: FR-5
+**対応ユーザーストーリー**:  
+
+**概要**: ユーザーからリクエストのあった範囲のスケジュールを時系列で表示する。リスト形式、週間カレンダー形式の二種類に対応する。
+
+**提供する機能**:
+- **スケジュール取得**: ユーザーから指定のあった範囲のスケジュールをAPIを呼ぶことで取得する
+- **スケジュール表示**: 取得したスケジュールをユーザー指定の形式（リストor週間カレンダー）で表示する
+  - リスト形式
+    - カード形式のリスト
+    - 直近が上、未来が下
+    - 直近から5件(今回は固定値)の項目を表示
+  - 週間カレンダー形式
+    - 縦軸に時間、横軸に日
+    - 一番左が日曜
+    - 本日を含む日曜はじまりの一週間
+  - 配信タイプ別に色分けする(具体値は未定)
+  - 公開/非公開の視覚的区別(具体的区別は未定)
+  - リスト形式、週間カレンダー形式、共に前と後のページネーションを実装する
+- **編集画面への遷移**: カードに「編集」ボタンがあり、クリックすることで編集画面へ遷移する
+- **スケジュール削除**: カードに存在する削除ボタンを押下された場合は、スケジュールを論理削除しD1に書き込む。論理削除はdeleted_atフィールドに日付を入力することにより実現する。削除前に警告を出す。
+
+**エラー処理**
+- API呼び出しに失敗した場合、エラー通知を出して作成画面に留まる
+
+
+#### 3.2.6 スケジュール編集・削除機能
+
+**機能ID**: F006
+**対応機能要件**: FR-5
+**対応ユーザーストーリー**:  
+
+**概要**: ユーザーが指定したスケジュールを編集・削除し、D1へ上書きする。削除は論理削除にする。入力はF007のバリデーション機能により適宜検証される。
+
+**提供する機能**:
+- **スケジュール取得機能**: ユーザーから編集指定のあったスケジュールをAPIを呼ぶことで取得する
+- **D1への書き込み**: Updateボタン押下によりAPIを呼び出し、入力されたスケジュールをD1に書き込む。成功/失敗の通知を出す。
+- **作成キャンセル**: Cancelボタン押下により、入力値を破棄し、1個前の画面へ遷移する
+- **削除**: Deleteボタン押下によりAPIを呼び出し、編集中のスケジュールを論理削除しD1に書き込む。論理削除はdeleted_atフィールドに日付を入力することにより実現する。削除前に警告を出す。
+- **編集中の自動保存**: LocalStorageに編集中の値を保持する。Update or Cancel or Deleteボタンで値を破棄する。ボタンを押さずにページ遷移した場合でも、編集中の値を復帰できるようにする。
+- **編集中ステータス**: 1文字でも編集が行われた場合のみ、Updateボタンを有効にする。編集していない場合は無効にし、Updateできないようにする。必要な状態が不足している場合も同様にupdateできないようにする。画面上にも編集している箇所がわかるようにする（手法未定）
+
+**バリデーション**
+- フロントエンド・バックエンド共にバリデーションを行う
+
+**エラー処理**
+- API呼び出しに失敗した場合、エラー通知を出して作成画面に留まる
+
+
+#### 3.2.7 編集値バリデーション機能
+
+**機能ID**: F007
+**対応機能要件**: FR-5, NFR-4
+**対応ユーザーストーリー**:  
+
+**概要**: Stream型に沿うようにバリデーションを行う。型チェックに加え追加の制約も同時にチェックする。
+
+**提供する機能**:
+- **型チェック**: zodを用いて型チェックを行う。Stream型に沿っているか確認する。
+- **値チェック**: 以下のチェックを行う
+  - stream_id: UUIDv7形式
+  - title: 1-100文字
+  - will_start_at: APIが呼ばれた現在～3カ月先, **D1のスケジュール中に重複時間帯なし**
+  - will_end_at: APIが呼ばれた現在～3カ月先, **D1のスケジュール中に重複時間帯なし**
+  - description: 0-2500文字
+  - tags[]: 各1-50文字
+
+**バリデーションエラー時の動作**:
+- 具体的なエラー内容を返却
+- 該当フィールドを特定可能にする(赤で強調など)
+- 再入力を促すメッセージ表示
+
 
 ### 3.3 静的サイト生成システム
 
-**機能ID**: F004  
+**機能ID**: F008  
 **対応機能要件**: FR-9, FR-11  
 **対応ユーザーストーリー**:  
 
 **概要**:
-リスナー向けの配信スケジュールページを静的HTMLとして生成し、高速かつ安定したアクセスを提供します。
+リスナー向けの配信スケジュールページを静的HTMLとして生成し、高速かつ安定したアクセスを提供します。認証不要でアクセス可能です。
 
 #### 3.3.1 生成トリガー
 
@@ -387,24 +411,17 @@ interface Stream {
 - 各日付に配信カードを配置
 - レスポンシブデザイン対応
 
-**月間ビュー**:
-- 当月を含む4-5週分の配信予定を表示
-- 月初を含む週の日曜から月末を含む週の土曜まで
-- 週間ビューと同様のレイアウト
-
 **ファイル構成**:
 - `/public/{user_id}/index.html` - デフォルトページ（週間ビューと同じ）
-- `/public/{user_id}/week.html` - 週間ビュー
-- `/public/{user_id}/month.html` - 月間ビュー
 
 **キャッシュ設定**:
 - Cache-Control: public, max-age=300（5分間キャッシュ）
 
 ---
 
-#### 3.4 レート制限機能
+### 3.4 レート制限機能
 
-**機能ID**: F005
+**機能ID**: F009
 **対応機能要件**: FR-2, FR-5
 
 **概要**:
@@ -442,6 +459,26 @@ interface RateLimit {
 ---
 
 
+### 3.5 公開ページシステム
+
+#### 3.5.1 公開スケジュール表示
+
+**機能ID**: F010  
+**対応機能要件**: FR-2, FR-5  
+
+**概要**: リスナー向けに配信予定を公開する。認証不要でアクセス可能。静的サイトとしてデプロイ。スケジュールはjsonにし、静的サイトからfetch()して表示する。本日から1週間先までのスケジュールを表示する。
+
+- 詳細:
+  - 認証不要でアクセス可能
+    - 完全静的サイトとしてデプロイ
+  - 公開設定のスケジュールのみ表示
+  - 今日を含む1週間分の予定表示（日曜開始）
+    - 週番号定義：日曜始まり、1月1日を含む週が第1週
+    - 注：ISO 8601とは異なる独自仕様
+  - モバイルレスポンシブ対応
+  - OGP対応（SNSシェア用）
+
+---
 
 ## 4. データモデル
 
@@ -470,7 +507,8 @@ CREATE TABLE streams (
   stream_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   title TEXT NOT NULL,
-  scheduled_at INTEGER NOT NULL,
+  will_start_at INTEGER NOT NULL,
+  will_end_at INTEGER NOT NULL,
   platform TEXT NOT NULL,
   stream_type TEXT NOT NULL,
   description TEXT,
@@ -482,7 +520,8 @@ CREATE TABLE streams (
   deleted_at INTEGER
 );
 CREATE INDEX idx_streams_user_id ON streams(user_id);
-CREATE INDEX idx_streams_scheduled_at ON streams(scheduled_at);
+CREATE INDEX idx_streams_will_start_at ON streams(will_start_at);
+CREATE INDEX idx_streams_will_end_at ON streams(will_end_at);
 ```
 stream_idはUUIDv7を想定
 
@@ -526,34 +565,37 @@ interface RateLimit {
 
 ### 4.3 typescript型宣言
 
-型宣言は参考です。
 
-```typescript
-interface Stream {
-  info: PublicStream;
-  state: number;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
-}
-
-interface PublicStream {
-  stream_id: string;
-  user_id: string;
-  title: string;
-  scheduled_at: Date;
-  platform: 'youtube' | 'twitch' | 'niconico';
-  stream_type: 'chat' | 'game' | 'singing' | 'collab';
-  description: string;
-  thumbnail_url: string;
-  tags: string[];
-}
-```
 
 
 
 
 ### 5.2 APIインターフェース
+
+```typescript
+interface APIResponse {
+  status: number;
+  error_cause?: APIErrorResponse;
+}
+
+interface APIResponseWithBody<T> {
+  status: number;
+  error_cause?: APIErrorResponse;
+  resp_body: T;  
+}
+
+interface APIErrorResponse {
+  rate_limit_reset_date?: string; // Date
+  missing_fields?: string[];  // field name
+  unknown_fields?: string[];  // field name
+  invalid_values?: APIInvalidValue[];
+}
+
+interface APIInvalidValue {
+  field_name: string;
+  invalid_cause: string;
+}
+```
 
 #### 5.2.1 認証API
 
@@ -561,26 +603,29 @@ interface PublicStream {
 ```
 POST /api/auth/magic-link
 Request: { email: string }
-Response: { status: number, message?: string }
+Response: APIResponse
 
 status:
   -1: internal error(messageに詳細を記載、emailサーバーが正しく応答しない、もこれ)
   0: success (email sent)
   1: rate limit over (too meny login request)
+  2: malformed parameters (there are no required fields or too meny fields)
+  3: validation fails (email string is out of standard)
 ```
 
 ##### API-2: 認証確認
 ```
 POST /api/auth/verify
 Request: { auth_token: string }
-Response: { status: number, message?: string }
+Response: APIResponse
 
 status:
   -1: internal error(messageに詳細を記載)
   0: success (auth successfuly)
   1: rate limit over (too meny login request)
-  2: expireed. (auth_token)
-  3: auth_token/session_id does not match
+  2: malformed parameters (there are no required fields or too meny fields)
+  3: validation fails (auth_token is not UUIDv7)
+  4: expired (auth_token is not in KV store)
 ```
 
 session idはクッキーとしてサーバーからクライアントに送信されます。
@@ -588,14 +633,13 @@ session idはクッキーとしてサーバーからクライアントに送信�
 ##### API-3: ログアウト
 ```
 POST /api/auth/logout
-Response: { status: number, message?: string }
+Response: APIResponse
 
 status:
   -1: internal error(messageに詳細を記載)
   0: success (logout successfuly)
   1: rate limit over (too meny API request)
-  2: expireed (session_id)
-  3: auth_token/session_id does not match
+  4: expired (session_id is not in KV store)
 ```
 
 #### 5.2.2 スケジュールAPI
@@ -603,21 +647,23 @@ status:
 ##### API-4: スケジュール作成
 ```
 POST /api/streams
-Request: Stream object(without stream_id)
-Response: { status: number, message?: string, stream: Stream }
+Request: StreamOnCreate
+Response: APIResponseWithBody<{ stream: Stream }>
 
 status:
   -1: internal error(messageに詳細を記載)
   0: success (create schedule successfuly)
   1: rate limit over (too meny API request)
-  2: expireed (session_id)
-  3: auth_token/session_id does not match
+  2: malformed parameters (there are no required fields or too meny fields)
+  3: validation fails
+  4: expired (session_id is not in KV store)
 ```
 
 ##### API-5: スケジュール取得
 ```
-GET /api/streams?page=1&limit=20
-Response: { status: number, message?: string, streams: Stream[], last_page: number }
+GET /api/streams
+Request: { page: number, limit: number }
+Response: APIResponseWithBody<{ streams: Stream[], last_page: number }>
 
 pageは1オリジン。今の日時の30分前からはじめて、未来に向かってリストアップする。配信中も含む。過去のスケジュールはこの項目では表示できない。
 
@@ -625,15 +671,15 @@ status:
   -1: internal error(messageに詳細を記載)
   0: success (read schedule successfuly)
   1: rate limit over (too meny API request)
-  2: expireed (session_id)
-  3: auth_token/session_id does not match
-  4: malformed parameters (there are no required fields or too meny fields)
-  6: out_of_range(page and limit is too big)
+  2: malformed parameters (there are no required fields or too meny fields)
+  3: validation fails (page and limit is too big)
+  4: expired (session_id is not in KV store)
 ```
 
 ```
-GET /api/streams?year=2025&week=1
-Response: { status: number, message?: string, streams: Stream[] }
+GET /api/streams
+Request: { year: number, week: number }
+Response: APIResponseWithBody<{ streams: Stream[] }>
 
 weekは今年の何週目かを与える。1オリジン。日曜始まり、1月1日を含む週が第1週
 注：ISO 8601とは異なる独自仕様
@@ -644,54 +690,53 @@ status:
   -1: internal error(messageに詳細を記載)
   0: success (read schedule successfuly)
   1: rate limit over (too meny API request)
-  2: expireed (session_id)
-  3: auth_token/session_id does not match
-  4: malformed parameters (there are no required fields or too meny fields)
-  6: out_of_range(year and week is out of range)
+  2: malformed parameters (there are no required fields or too meny fields)
+  3: validation fails (year and week is out of range)
+  4: expired (session_id is not in KV store)
 ```
 
 ```
 GET /api/streams/:id
-Response: { status: number, message?: string, stream: Stream }
+Response: APIResponseWithBody<{ stream: Stream }>
 
 status:
   -1: internal error(messageに詳細を記載)
   0: success (read schedule successfuly)
   1: rate limit over (too meny API request)
-  2: expireed (session_id)
-  3: auth_token/session_id does not match
-  4: malformed parameters (there are no required fields or too meny fields)
+  2: malformed parameters (there are no required fields or too meny fields)
+  3: validation fails (stream_id is not UUIDv4)
+  4: expired (session_id is not in KV store)
   5: id does not found(stream_id)
 ```
 
 ##### API-6: スケジュール更新
 ```
 PUT /api/streams/:id
-Request: Stream object
-Response: { status: number, message?: string }
+Request: Stream
+Response: APIResponse
 
 status:
   -1: internal error(messageに詳細を記載)
   0: success (update schedule successfuly)
   1: rate limit over (too meny API request)
-  2: expireed (session_id)
-  3: auth_token/session_id does not match
-  4: malformed parameters (there are no required fields or too meny fields)
+  2: malformed parameters (there are no required fields or too meny fields)
+  3: validation fails
+  4: expired (session_id is not in KV store)
   5: id does not found(stream_id)
 ```
 
 ##### API-7: スケジュール削除
 ```
 DELETE /api/streams/:id
-Response: { status: number, message?: string }
+Response: APIResponse
 
 status:
   -1: internal error(messageに詳細を記載)
   0: success (delete schedule successfuly)
   1: rate limit over (too meny API request)
-  2: expireed (session_id)
-  3: auth_token/session_id does not match
-  4: malformed parameters (there are no required fields or too meny fields)
+  2: malformed parameters (there are no required fields or too meny fields)
+  3: validation fails (stream_id is not UUIDv4)
+  4: expired (session_id is not in KV store)
   5: id does not found(stream_id)
 ```
 
@@ -824,16 +869,16 @@ sequenceDiagram
 
 ### 6.1 エラー分類と対応
 
-| エラータイプ | HTTPステータス | status値 | ユーザーメッセージ | 対応アクション |
+| エラータイプ | HTTPステータス | status値 | エラー理由 | 対応アクション |
 |------------|--------------|---------|------------------|--------------|
-| 内部エラー | 500 | -1 | 「システムエラーが発生しました」 | ログ記録、既存状態維持 |
+| 内部エラー | 500 | -1 | 内部エラーや外部API接続レスポンスなしなど、ユーザー起因でないエラー | ログ記録、既存状態維持 |
 | 成功 | 200 | 0 | - | - |
-| レート制限超過 | 429 | 1 | 「リクエストが多すぎます」 | 待機時間表示 |
-| セッション期限切れ | 401 | 2 | 「ログインが必要です」 | 再ログイン画面へ |
-| 認証エラー | 401 | 3 | 「認証に失敗しました」 | 再試行案内 |
-| パラメータエラー | 400 | 4 | 「入力内容に誤りがあります」 | エラー箇所表示 |
-| リソース未検出 | 404 | 5 | 「データが見つかりません」 | 一覧へ戻る |
-| 範囲外エラー | 400 | 6 | 「指定範囲が無効です」 | 有効範囲表示 |
+| レート制限超過 | 429 | 1 | レート制限機能による超過検知 | 待機時間表示 |
+| パラメータ過不足 | 400 | 2 | パラメータの項目に過不足がある | エラー箇所表示 |
+| パラメータ検証失敗 | 400 | 3 | APIパラメータのバリデーションエラー | エラー箇所表示 |
+| 期限切れ | 401 | 4 | セッションIDや認証トークンが期限切れ | 再ログイン画面へ |
+| 存在しないID | 404 | 5 | stream_idが存在しない | 一覧へ戻る |
+
 
 ### 6.2 エラーログ管理
 
@@ -859,21 +904,21 @@ sequenceDiagram
 - 最大254文字
 - 大文字小文字を区別しない
 
-**UUID**:
+**各種ID**:
 - user_id: UUIDv4形式
 - session_id, auth_token, stream_id: UUIDv7形式
 
 **スケジュールデータ**:
-- タイトル: 必須、1-100文字
-- 日時: 現在〜3ヶ月先
-- プラットフォーム: 定義された値のみ
-- 配信タイプ: 定義された値のみ
-- 説明: 任意、最大500文字
-- タグ: 各50文字以内の文字列配列
+- Stream型に合うようzodでバリデーション、追加で以下の制約
+  - title: 1-100文字
+  - will_start_at: APIが呼ばれた現在～3カ月先, **D1のスケジュール中に重複時間帯なし**
+  - will_end_at: APIが呼ばれた現在～3カ月先, **D1のスケジュール中に重複時間帯なし**
+  - description: 0-2500文字
+  - tags[]: 各1-50文字
 
 **バリデーションエラー時の動作**:
 - 具体的なエラー内容を返却
-- 該当フィールドを特定可能にする
+- 該当フィールドを特定可能にする(赤で強調など)
 - 再入力を促すメッセージ表示
 
 ---
@@ -1029,11 +1074,3 @@ sequenceDiagram
 **垂直スケーリング**:
 - 必要に応じて有料プランへ移行
 - キャッシュ戦略の最適化
-
----
-
-**Document Version**: 1.0.0  
-**Phase**: 01 (MVP)  
-**Last Updated**: 2024-12-XX  
-**Author**: VTuneHub Development Team  
-**Status**: Draft
