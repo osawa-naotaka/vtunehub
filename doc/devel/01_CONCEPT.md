@@ -161,7 +161,7 @@ VTuneHub
 - セッションはhttpOnly Cookieで管理
 - CSRF対策としてSameSite=Lax設定
 - 認証レート制限: 1 emailあたり10回/時
-- APIレート制限: session idあたり1000回/時
+- APIレート制限: user idあたり1000回/時
 
 #### 3.2.2 配信管理機能
 
