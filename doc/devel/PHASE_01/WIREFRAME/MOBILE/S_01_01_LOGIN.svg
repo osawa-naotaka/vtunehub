@@ -1,0 +1,107 @@
+<svg width="400" height="600" viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 -->
+  <rect width="400" height="600" fill="#FAFAFA"/>
+  
+  <!-- ヘッダー -->
+  <rect width="400" height="60" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  <text x="200" y="38" font-family="Arial, sans-serif" font-size="18" font-weight="600" fill="#111827" text-anchor="middle">
+    🔒 ログイン
+  </text>
+  
+  <!-- エラーバナー -->
+  <g transform="translate(50, 80)">
+    <rect width="300" height="80" rx="8" fill="#FEF2F2" stroke="#FECACA" stroke-width="1"/>
+    
+    <!-- 警告アイコン -->
+    <g transform="translate(16, 24)">
+      <circle cx="16" cy="16" r="16" fill="#FCA5A5"/>
+      <path d="M11 11 L21 11 L16 6 Z" fill="#DC2626"/>
+      <rect x="15" y="13" width="2" height="6" fill="#DC2626"/>
+      <rect x="15" y="21" width="2" height="2" fill="#DC2626"/>
+    </g>
+    
+    <!-- エラーメッセージ -->
+    <text x="56" y="28" font-family="Arial, sans-serif" font-size="12" font-weight="600" fill="#991B1B">
+      送信回数の上限に達しました
+    </text>
+    <text x="56" y="48" font-family="Arial, sans-serif" font-size="10" fill="#7F1D1D">
+      1時間後に再度お試しください
+    </text>
+    
+    <!-- 閉じるボタン -->
+    <g transform="translate(264, 16)">
+      <circle cx="12" cy="12" r="12" fill="#F87171" opacity="0.1"/>
+      <path d="M8 8 L16 16 M16 8 L8 16" stroke="#DC2626" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    
+  </g>
+  
+  <!-- メインコンテナ -->
+  <g transform="translate(50, 180)">
+    <!-- メールアドレスラベル（無効化状態） -->
+    <text x="0" y="20" font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#9CA3AF">
+      メールアドレス
+    </text>
+    
+    <!-- メールアドレス入力欄（無効化状態） -->
+    <rect x="0" y="30" width="300" height="40" rx="6" fill="#F9FAFB" stroke="#E5E7EB" stroke-width="1"/>
+    <text x="12" y="52" font-family="Arial, sans-serif" font-size="14" fill="#D1D5DB">
+      example@email.com
+    </text>
+    
+    <!-- 無効化オーバーレイ -->
+    <rect x="0" y="30" width="300" height="40" rx="6" fill="#FFFFFF" opacity="0.6"/>
+    
+    <!-- ログインボタン（無効化状態） -->
+    <rect x="0" y="90" width="300" height="44" rx="6" fill="#E5E7EB" stroke="#E5E7EB" stroke-width="1"/>
+    <text x="150" y="116" font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#9CA3AF" text-anchor="middle">
+      ログインリンクを送信
+    </text>
+    
+    <!-- 説明テキスト（無効化状態） -->
+    <text x="0" y="170" font-family="Arial, sans-serif" font-size="12" fill="#D1D5DB">
+      入力されたメールアドレスにログインリンクを送信します。
+    </text>
+    <text x="0" y="190" font-family="Arial, sans-serif" font-size="12" fill="#D1D5DB">
+      リンクをクリックしてログインしてください。
+    </text>
+    
+    <!-- 追加の説明（無効化状態） -->
+    <text x="0" y="230" font-family="Arial, sans-serif" font-size="11" fill="#E5E7EB">
+      • パスワードは不要です
+    </text>
+    <text x="0" y="250" font-family="Arial, sans-serif" font-size="11" fill="#E5E7EB">
+      • リンクの有効期限は10分です
+    </text>
+    <text x="0" y="270" font-family="Arial, sans-serif" font-size="11" fill="#E5E7EB">
+      • メールが届かない場合は迷惑メールフォルダをご確認ください
+    </text>
+  </g>
+  
+  <!-- フッター（無効化状態） -->
+  <g transform="translate(50, 450)">
+    <text x="150" y="20" font-family="Arial, sans-serif" font-size="12" fill="#D1D5DB" text-anchor="middle">
+      初回ご利用の方は自動でアカウントが作成されます
+    </text>
+    
+    <!-- セキュリティに関する説明（無効化状態） -->
+    <g transform="translate(0, 40)">
+      <circle cx="8" cy="8" r="6" fill="#D1D5DB"/>
+      <path d="M5 8 L7 10 L11 6" stroke="#FFFFFF" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="20" y="12" font-family="Arial, sans-serif" font-size="11" fill="#D1D5DB">
+        SSL暗号化通信でセキュリティを保護
+      </text>
+    </g>
+  </g>
+  
+  <!-- 装飾的な要素（無効化状態） -->
+  <g transform="translate(320, 150)">
+    <!-- メールアイコン（無効化状態） -->
+    <circle cx="20" cy="20" r="18" fill="#F3F4F6" stroke="#E5E7EB" stroke-width="1"/>
+    <rect x="12" y="16" width="16" height="8" rx="2" fill="none" stroke="#D1D5DB" stroke-width="1.5"/>
+    <path d="M12 16 L20 20 L28 16" stroke="#D1D5DB" stroke-width="1.5" fill="none"/>
+  </g>
+  
+  <!-- 全体の無効化オーバーレイ（フォーム部分のみ） -->
+  <rect x="50" y="180" width="300" height="270" rx="8" fill="#FFFFFF" opacity="0.3"/>
+</svg>

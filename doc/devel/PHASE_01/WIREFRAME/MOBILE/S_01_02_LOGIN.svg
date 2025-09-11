@@ -1,0 +1,100 @@
+<svg width="400" height="600" viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 -->
+  <rect width="400" height="600" fill="#FAFAFA"/>
+  
+  <!-- ヘッダー -->
+  <rect width="400" height="60" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  <text x="200" y="38" font-family="Arial, sans-serif" font-size="18" font-weight="600" fill="#111827" text-anchor="middle">
+    🔒 ログイン
+  </text>
+  
+  <!-- メインコンテナ -->
+  <g transform="translate(50, 150)">
+    <!-- メールアドレスラベル -->
+    <text x="0" y="20" font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#374151">
+      メールアドレス
+    </text>
+    
+    <!-- メールアドレス入力欄（エラー状態） -->
+    <rect x="0" y="30" width="300" height="40" rx="6" fill="#FFFFFF" stroke="#DC2626" stroke-width="2"/>
+    <text x="12" y="52" font-family="Arial, sans-serif" font-size="14" fill="#111827">
+      invalid-email
+    </text>
+    
+    <!-- エラーアイコン（入力欄内） -->
+    <g transform="translate(270, 42)">
+      <circle cx="8" cy="8" r="8" fill="#DC2626"/>
+      <path d="M5 5 L11 11 M11 5 L5 11" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/>
+    </g>
+    
+    <!-- フィールド下エラーメッセージ -->
+    <g transform="translate(0, 78)">
+      <g transform="translate(0, 0)">
+        <circle cx="6" cy="6" r="5" fill="#DC2626"/>
+        <text x="6" y="9" font-family="Arial, sans-serif" font-size="8" fill="#FFFFFF" text-anchor="middle">!</text>
+      </g>
+      <text x="16" y="9" font-family="Arial, sans-serif" font-size="12" fill="#DC2626">
+        正しいメールアドレスの形式で入力してください
+      </text>
+    </g>
+    
+    <!-- ログインボタン（通常状態） -->
+    <rect x="0" y="110" width="300" height="44" rx="6" fill="#3B82F6" stroke="#3B82F6" stroke-width="1"/>
+    <text x="150" y="136" font-family="Arial, sans-serif" font-size="14" font-weight="500" fill="#FFFFFF" text-anchor="middle">
+      ログインリンクを送信
+    </text>
+    
+    <!-- ボタンのホバー効果（グラデーション） -->
+    <defs>
+      <linearGradient id="buttonGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:0.1"/>
+        <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:0"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="110" width="300" height="44" rx="6" fill="url(#buttonGradient)"/>
+    
+    <!-- 説明テキスト -->
+    <text x="0" y="190" font-family="Arial, sans-serif" font-size="12" fill="#6B7280">
+      入力されたメールアドレスにログインリンクを送信します。
+    </text>
+    <text x="0" y="210" font-family="Arial, sans-serif" font-size="12" fill="#6B7280">
+      リンクをクリックしてログインしてください。
+    </text>
+    
+    <!-- 追加の説明 -->
+    <text x="0" y="250" font-family="Arial, sans-serif" font-size="11" fill="#9CA3AF">
+      • パスワードは不要です
+    </text>
+    <text x="0" y="270" font-family="Arial, sans-serif" font-size="11" fill="#9CA3AF">
+      • リンクの有効期限は10分です
+    </text>
+    <text x="0" y="290" font-family="Arial, sans-serif" font-size="11" fill="#9CA3AF">
+      • メールが届かない場合は迷惑メールフォルダをご確認ください
+    </text>
+  </g>
+  
+  <!-- フッター -->
+  <g transform="translate(50, 470)">
+    <text x="150" y="20" font-family="Arial, sans-serif" font-size="12" fill="#9CA3AF" text-anchor="middle">
+      初回ご利用の方は自動でアカウントが作成されます
+    </text>
+    
+    <!-- セキュリティに関する説明 -->
+    <g transform="translate(0, 40)">
+      <circle cx="8" cy="8" r="6" fill="#10B981"/>
+      <path d="M5 8 L7 10 L11 6" stroke="#FFFFFF" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="20" y="12" font-family="Arial, sans-serif" font-size="11" fill="#6B7280">
+        SSL暗号化通信でセキュリティを保護
+      </text>
+    </g>
+  </g>
+  
+  <!-- 装飾的な要素 -->
+  <g transform="translate(320, 140)">
+    <!-- メールアイコン -->
+    <circle cx="20" cy="20" r="18" fill="#EFF6FF" stroke="#DBEAFE" stroke-width="1"/>
+    <rect x="12" y="16" width="16" height="8" rx="2" fill="none" stroke="#3B82F6" stroke-width="1.5"/>
+    <path d="M12 16 L20 20 L28 16" stroke="#3B82F6" stroke-width="1.5" fill="none"/>
+  </g>
+  
+</svg>
